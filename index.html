@@ -48,10 +48,6 @@
           </ul>
         </section>
 
-        <section>
-          <h2>Analysis and Measurement</h2>
-        </section>
-
         <!-- Browsers -->
         <section>
           <h2>Browser Profiling</h2>
@@ -104,28 +100,101 @@
           <img src="img/newrelic6.png">
         </section>
 
-        <section>
-          <h2>Using Background Jobs</h2>
-          <p class="fragment"><small>delayed_job, resque, sidekiq etc.</small></p>
-          <ul>
-            <li class="fragment">Sending emails</li>
-            <li class="fragment">Indexing search engine</li>
-            <li class="fragment">Generating reports</li>
-            <li class="fragment">...</li>
-          </ul>
-        </section>
 
         <section>
           <h2>General Guidelines</h2>
+          <p>for writing efficient code</p>
         </section>
 
         <section>
-          <h2>Use 'pluck' if only values are needed and not objects</h2>
+          <h3>Interpolate strings instead of adding</h3>
+          <span class="fragment dont">slow</span>
+          <pre class="fragment"><code data-trim>
+str = s1.to_s + " " + s2.to_s + " " + s3.to_s
+          </code></pre>
+          <br/>
+          <p class="fragment do">fast</p>
+          <pre class="fragment"><code data-trim>
+str = "#{s1} #{s2} #{s3}"
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Use destructive operations</h3>
+          <pre class="fragment"><code data-trim>
+#String
++   <<  "#{}"
+sub  sub!
+gsub  gsub!
+
+#Hash
+merge  merge!
+
+#Array
++  concat
+map  map!
+compact  compact!
+uniq  uniq!
+flatten  flatten!
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Use instance variable over attribute accessor</h3>
+          <span class="fragment dont">slow</span>
+          <pre class="fragment"><code data-trim>
+self.var = "requires walking the AST, and results in multiple lookups"
+          </code></pre>
+          <br/>
+          <p class="fragment do">fast</p>
+          <pre class="fragment"><code data-trim>
+@var = "local variable, cached by Ruby, and requires a single lookup"
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Use blocks instead of symbol procs</h3>
+          <pre class="fragment"><code data-trim>
+# Symbol.to_proc method, order of magniture slower...
+@widget_ids = @widgets.map(&:id)
+          </code></pre>
+          <pre class="fragment"><code data-trim>
+# same effect, not as pretty, but much faster
+@widget_ids = @widgets.inject([]) {|w, a| w.push(a.id)}
+          </code></pre>
+          <pre class="fragment"><code data-trim>
+# faster, and simpler than inject
+@widget_ids = @widgets.collect {|w| w.id }
+          </code></pre>
+          <pre class="fragment"><code data-trim>
+# yet another (faster) way to tackle the problem
+@widget_ids = @widgets.map {|w| w.id }
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Fetch only what is needed</h3>
+          <span class="fragment dont">don't</span>
+          <pre class="fragment"><code data-trim>
+User.all.each do |user|
+  user_hash[user.id] = user.name
+end
+          </code></pre>
+          <br/>
+          <p class="fragment do">do</p>
+          <pre class="fragment"><code data-trim>
+User.select([:id, :name]).each do |user|
+  user_hash[user.id] = user.name
+end
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Use 'pluck' if only values are needed and not objects</h3>
           <span class="fragment dont">don't</span>
           <pre class="fragment"><code data-trim>
 User.all.collect(:id)
           </code></pre>
-          <br/>
           <pre class="fragment"><code data-trim>
 User.select(:id).collect(:id)
           </code></pre>
@@ -137,7 +206,196 @@ User.pluck(:id)
         </section>
 
         <section>
-          <h2>header</h2>
+          <h3>Combine the queries and reduce the number of queries that are being fired</h3>
+          <span class="fragment dont">don't</span>
+          <pre class="fragment"><code data-trim>
+program.groups.each do |group|
+  group.connection_memberships.each do |membership|
+    membership.send_email
+  end
+end
+          </code></pre>
+          <br/>
+          <p class="fragment do">do</p>
+          <pre class="fragment"><code data-trim>
+Connection::Membership.joins(:group).where('groups.program_id = ?', program.id).each do |membership|
+  membership.send_email
+end
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Avoid firing queries whenever we have eager loaded</h3>
+          <span class="fragment dont">don't</span>
+          <pre class="fragment"><code data-trim>
+groups.includes(:connection_memberships).each do |group|
+  group.memberships.find_by_id(membership.id)
+end
+          </code></pre>
+          <br/>
+          <p class="fragment do">do</p>
+          <pre class="fragment"><code data-trim>
+groups.includes(:connection_memberships).each do |group|
+  group.memberships.find{|mem| mem.id == membership.id}
+end
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Avoid nested queries. Use joins instead of nesting.</h3>
+          <span class="fragment dont">don't</span>
+          <pre class="fragment"><code data-trim>
+SELECT id
+FROM users
+WHERE member_id IN (SELECT id from members where admin = true)
+          </code></pre>
+          <br/>
+          <p class="fragment do">do</p>
+          <pre class="fragment"><code data-trim>
+SELECT id
+FROM users LEFT JOIN members ON users.member_id = members.id
+WHERE members.admin = true
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Avoid firing queries repeatedly in the loop. precompute instead</h3>
+          <span class="fragment dont">don't</span>
+          <pre class="fragment"><code data-trim>
+User.all.each do |user|
+  if user.pending_notifications.size > 0
+    user.send_email
+  end
+end
+          </code></pre>
+          <br/>
+          <p class="fragment do">do</p>
+          <pre class="fragment"><code data-trim>
+pending_notifications = PendingNotification.group_by(&:user_id)
+User.each do |user|
+  if pending_notifications[user.id].present?
+    user.send_email
+  end
+end
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Avoid conditional adding to the array. Instead form the hash</h3>
+          <span class="fragment dont">don't</span>
+          <pre class="fragment"><code data-trim>
+data = []
+elements.each do |element|
+  data << element.id unless data.include?(element.id)
+end
+          </code></pre>
+          <br/>
+          <p class="fragment do">do</p>
+          <pre class="fragment"><code data-trim>
+data = {}
+elements.each do |element|
+  data[element.id] = element.id
+end
+data = data.keys  # if needed
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Reduce the outer loop data set in the iterationa</h3>
+          <span class="fragment dont">don't</span>
+          <pre class="fragment"><code data-trim>
+calendar_meetings = {}
+User.each do |user|
+  calendar_meetings[user.id] = user.meetings.with_calendar_time_time_available.size
+end
+          </code></pre>
+          <br/>
+          <p class="fragment do">do</p>
+          <pre class="fragment"><code data-trim>
+calendar_meetings = {}
+User.where(meetings: {calendar_time_available: true}).each do |user|
+  calendar_meetings[user.id] = user.meetings.with_calendar_time_time_available.size
+end
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Avoid passing big list of ids in the query. Use joins instead</h3>
+          <span class="fragment dont">don't</span>
+          <pre class="fragment"><code data-trim>
+SELECT id from users WHERE member_id IN (1, 2, 3, ........100000)
+          </code></pre>
+          <br/>
+          <p class="fragment do">do</p>
+          <pre class="fragment"><code data-trim>
+SELECT id from users LEFT JOIN members ON users.member_id = members.id WHERE members.admin = true
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Avoid iterating over a big set of objects</h3>
+          <span class="fragment dont">don't</span>
+          <pre class="fragment"><code data-trim>
+User.each do |user|
+  user.send_email
+end
+          </code></pre>
+          <br/>
+          <p class="fragment do">do</p>
+          <pre class="fragment"><code data-trim>
+User.find_each do |user|
+  user.send_email
+end
+          </code></pre>
+          <pre class="fragment"><code data-trim>
+find_in_batches
+batch_size
+          </code></pre>
+        </section>
+
+        <section>
+          <h3>Index database columns</h3>
+        </section>
+
+        <section>
+          <h2>Benchmark Everything!</h2>
+          <pre class="fragment"><code data-trim>
+require 'benchmark'
+
+LOOP_COUNT = 1_000_000
+x = ["1","2","3"]
+Benchmark.bmbm do |test|
+  test.report("Method invoke") do
+    LOOP_COUNT.times {x.map {|elem| elem.to_i}}
+  end
+
+ test.report("Symbol.to_proc") do
+   LOOP_COUNT.times {x.map(&:to_i)}
+ end
+end
+          </code></pre>
+
+          <pre class="fragment"><code data-trim>
+--------------------------------------------------
+Method invoke    1.600000   0.000000   1.600000 (  1.783758)
+Symbol.to_proc  13.240000   0.070000  13.310000 ( 13.770514)
+---------------------------------------- total: 14.910000sec
+
+                     user     system      total        real
+Method invoke    1.590000   0.010000   1.600000 (  1.628473)
+Symbol.to_proc  13.210000   0.060000  13.270000 ( 13.678768)
+          </code></pre>
+        </section>
+
+        <section>
+          <h2>Using Background Jobs</h2>
+          <p class="fragment"><small>delayed_job, resque, sidekiq etc.</small></p>
+          <ul>
+            <li class="fragment">Sending emails</li>
+            <li class="fragment">Indexing search engine</li>
+            <li class="fragment">Generating reports</li>
+            <li class="fragment">...</li>
+          </ul>
         </section>
       </div>
     </div>
