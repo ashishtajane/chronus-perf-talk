@@ -143,7 +143,7 @@ end
 User.all.collect(:id)
           </code></pre>
           <pre class="fragment"><code data-trim>
-User.select(:id).collect(:id)
+User.select(:id).collect(&:id)
           </code></pre>
           <br/>
           <p class="fragment do">do</p>
@@ -248,12 +248,12 @@ data = data.keys  # if needed
         </section>
 
         <section>
-          <h3>Reduce the outer loop data set in the iterationa</h3>
+          <h3>Reduce the outer loop data set in the iteration</h3>
           <span class="fragment dont">don't</span>
           <pre class="fragment"><code data-trim>
 calendar_meetings = {}
 User.each do |user|
-  calendar_meetings[user.id] = user.meetings.with_calendar_time_time_available.size
+  calendar_meetings[user.id] = user.meetings.with_calendar_time_available.size
 end
           </code></pre>
           <br/>
@@ -261,7 +261,7 @@ end
           <pre class="fragment"><code data-trim>
 calendar_meetings = {}
 User.where(meetings: {calendar_time_available: true}).each do |user|
-  calendar_meetings[user.id] = user.meetings.with_calendar_time_time_available.size
+  calendar_meetings[user.id] = user.meetings.with_calendar_time_available.size
 end
           </code></pre>
         </section>
@@ -302,6 +302,69 @@ batch_size
 
         <section>
           <h3>Index database columns</h3>
+          <ul>
+            <li class="fragment">
+              <a href="https://github.com/plentz/lol_dba">lol_dba</a> : Find missing indexes in rails apps
+            </li>
+            <li class="fragment">
+              <a href="http://www.sitepoint.com/using-explain-to-write-better-mysql-queries/">EXPLAIN</a> explained!
+            </li>
+            <li class="fragment">
+              <a href="https://github.com/nesquena/query_reviewer">query_reviewer</a> : view EXPLAIN of each select query
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>counter caches</h3>
+          <pre class="fragment"><code data-trim>
+(0.3ms) SELECT COUNT(*) FROM "wheels" WHERE "wheels"."vehicle_id" = 1
+(0.3ms) SELECT COUNT(*) FROM "wheels" WHERE "wheels"."vehicle_id" = 2
+(0.2ms) SELECT COUNT(*) FROM "wheels" WHERE "wheels"."vehicle_id" = 3
+(1.1ms) SELECT COUNT(*) FROM "wheels" WHERE "wheels"."vehicle_id" = 4
+(1.0ms) SELECT COUNT(*) FROM "wheels" WHERE "wheels"."vehicle_id" = 5
+(1.1ms) SELECT COUNT(*) FROM "wheels" WHERE "wheels"."vehicle_id" = 6
+(0.5ms) SELECT COUNT(*) FROM "wheels" WHERE "wheels"."vehicle_id" = 7
+(0.3ms) SELECT COUNT(*) FROM "wheels" WHERE "wheels"."vehicle_id" = 8
+          </code></pre>
+          <pre class="fragment"><code data-trim>
+class Wheel < ActiveRecord::Base
+  belongs_to :vehicle, counter_cache: true
+end
+
+class Vehicle < ActiveRecord::Base
+  has_many :wheels
+end
+          </code></pre>
+        </section>
+
+        <section>
+          <h3><a href="https://github.com/flyerhzm/bullet">Bullet Gem</a></h3>
+          <ul>
+            <li class="fragment">Find N+1 queries</li>
+            <li class="fragment">Find if counter cache is needed</li>
+            <li class="fragment">Find unused eagerloading</li>
+          </ul>
+        </section>
+        <section>
+          <h3><a href="https://github.com/flyerhzm/bullet">Bullet Gem</a></h3>
+          <pre><code data-trim>
+# config/environments/development.rb
+config.after_initialize do
+  Bullet.enable = false
+  Bullet.alert = true
+  Bullet.bullet_logger = true
+  Bullet.console = true
+  Bullet.rails_logger = true
+  Bullet.disable_browser_cache = true
+end
+          </code></pre>
+        </section>
+        <section>
+          <img src="img/bullet1.png">
+        </section>
+        <section>
+          <img src="img/bullet2.png">
         </section>
 
         <section>
@@ -365,6 +428,15 @@ Symbol.to_proc  13.210000   0.060000  13.270000 ( 13.678768)
 
         <!-- New Relic -->
         <section>
+        <h3>Performance Monitoring, Requests Analysis</h3>
+        <ul>
+          <li class="fragment">
+            <a href="https://github.com/wvanbergen/request-log-analyzer">Request Log Analyser</a>
+          </li>
+          <li class="fragment">NewRelic, Scout, Countly, Ruxit etc.</li>
+        </ul>
+        </section>
+        <section>
           <h2>New Relic Monitoring</h2>
         </section>
         <section>
@@ -387,13 +459,29 @@ Symbol.to_proc  13.210000   0.060000  13.270000 ( 13.678768)
         </section>
 
         <section>
-          <h2>Using Background Jobs</h2>
+          <h2>Use Background Jobs</h2>
           <p class="fragment"><small>delayed_job, resque, sidekiq etc.</small></p>
           <ul>
             <li class="fragment">Sending emails</li>
             <li class="fragment">Indexing search engine</li>
             <li class="fragment">Generating reports</li>
             <li class="fragment">...</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>Resources</h2>
+          <ul>
+            <li>
+              <a href="http://www.igvita.com/2008/07/08/6-optimization-tips-for-ruby-mri/">Optiomization Tips for Ruby MRI</a>
+            </li>
+            <li>
+              <a href="https://blog.engineyard.com/2009/thats-not-a-memory-leak-its-bloat">Bloating</a> - Engine Yard
+            </li>
+            <li>
+              <a href="http://www.slideshare.net/ihower/rails-performance">Rails Performance Best Practices</a> - by ihower
+            </li>
+            <li>Chronus Internal Performance Guidelines Docs</li>
           </ul>
         </section>
       </div>
